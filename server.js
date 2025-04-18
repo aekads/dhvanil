@@ -1,10 +1,10 @@
-const express = require('express');
-const app = express();
+
+
 const path = require('path');
 const axios = require("axios"); // ✅ Import axios
 
 const { Pool } = require('pg');
-const bodyParser = require('body-parser');
+
 
 
 const chromium = require('chrome-aws-lambda');
@@ -30,9 +30,7 @@ const pool = new Pool({
 });
 
 // Middleware
-app.set('view engine', 'ejs');
-app.use(express.static('public'));
-app.use(bodyParser.urlencoded({ extended: true }));
+
 
 
 
