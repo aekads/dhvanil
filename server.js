@@ -8,39 +8,41 @@ import admin from 'firebase-admin';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-const { Pool } = pkg;
-
-// Required to use __dirname in ES module
+// Fix __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+const { Pool } = pkg;
 
-// PostgreSQL Connection
+// PostgreSQL connection
 const pool = new Pool({
   user: 'u3m7grklvtlo6',
   host: '35.209.89.182',
   database: 'dbzvtfeophlfnr',
   password: 'AekAds@24',
-  port: 5432,
+  port: 5432
 });
 
 // Firebase Admin Init
 const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://aekads-88e11-default-rtdb.firebaseio.com/"
 });
+
 const db = admin.database();
 
-// Express Config
+// Express middleware
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static('public'));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
 
-// Scraper
+const PORT = process.env.PORT || 10000;
+
+// Scraping function
 async function scrapeAndPush() {
   const id1Result = await pool.query('SELECT url FROM code WHERE id = 1');
   const url = `https://www.cricketmazza.com/live/${id1Result.rows[0].url}`;
@@ -51,6 +53,7 @@ async function scrapeAndPush() {
   });
 
   const page = await browser.newPage();
+
   try {
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 0 });
     await page.waitForSelector('li.active', { timeout: 5000 });
@@ -63,15 +66,13 @@ async function scrapeAndPush() {
 
       const getScores = () => {
         const teams = document.querySelectorAll('div.d-flex.justify-content-center.text-white div.p-2');
-        const filteredScores = Array.from(teams)
+        return Array.from(teams)
           .map(team => {
             const teamName = team.querySelector('span.score-name')?.innerText.trim() || '';
             const score = team.querySelector('h3')?.innerText.trim().split(' ')[0] || '';
             return { team: teamName, score };
           })
           .filter(item => item.team !== '' && item.score !== '');
-
-        return filteredScores.map(item => ({ ...item }));
       };
 
       const getBatters = () => {
@@ -135,22 +136,13 @@ async function scrapeAndPush() {
   }
 }
 
+// Schedule the scraper
 scrapeAndPush();
 setInterval(scrapeAndPush, 10000);
 
 // Routes
 app.get('/', (req, res) => {
   res.render('match-details');
-});
-
-app.get('/dhvanil', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM code ORDER BY id ASC');
-    res.render('code_form', { codes: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.send('Error fetching data');
-  }
 });
 
 app.post('/update/:id', async (req, res) => {
@@ -162,6 +154,16 @@ app.post('/update/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.send('Error updating data');
+  }
+});
+
+app.get('/dhvanil', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM code ORDER BY id ASC');
+    res.render('code_form', { codes: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.send('Error fetching data');
   }
 });
 
@@ -180,12 +182,12 @@ app.get('/api/live-match', async (req, res) => {
   }
 });
 
-// Start Server
+// Start server after DB is connected
 pool.connect()
   .then(() => {
     console.log('✅ Connected to PostgreSQL');
-    app.listen(process.env.PORT || 3000, () => {
-      console.log(`🚀 Server running at http://localhost:${process.env.PORT || 3000}`);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
     });
   })
   .catch(err => console.error('❌ DB connection error:', err));
