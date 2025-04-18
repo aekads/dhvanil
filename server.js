@@ -1,51 +1,51 @@
-import express from 'express';
-import path from 'path';
-import axios from 'axios';
-import pkg from 'pg';
-import bodyParser from 'body-parser';
-import puppeteer from 'puppeteer';
-import admin from 'firebase-admin';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-// Fix __dirname in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
+const express = require('express');
 const app = express();
-const { Pool } = pkg;
+const path = require('path');
+const axios = require("axios"); // ✅ Import axios
 
-// PostgreSQL connection
+const { Pool } = require('pg');
+const bodyParser = require('body-parser');
+// DB Connection
 const pool = new Pool({
   user: 'u3m7grklvtlo6',
   host: '35.209.89.182',
   database: 'dbzvtfeophlfnr',
   password: 'AekAds@24',
-  port: 5432
+  port: 5432,
 });
 
-// Firebase Admin Init
-const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+// Middleware
+app.set('view engine', 'ejs');
+app.use(express.static('public'));
+app.use(bodyParser.urlencoded({ extended: true }));
 
+
+
+
+const puppeteer = require('puppeteer');
+const admin = require('firebase-admin');
+// Convert the environm
+// ent variable back to a JSON object
+const serviceAccount = (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+// Firebase Init
+// const serviceAccount = require('./firebaseKey.json');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://aekads-88e11-default-rtdb.firebaseio.com/"
 });
-
 const db = admin.database();
-
-// Express middleware
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-app.use(express.static('public'));
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public')); // Optional static folder for CSS/JS
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// Scraping function
 async function scrapeAndPush() {
-  const id1Result = await pool.query('SELECT url FROM code WHERE id = 1');
-  const url = `https://www.cricketmazza.com/live/${id1Result.rows[0].url}`;
+ // Directly query the row with id = 1
+ const id1Result = await pool.query('SELECT url FROM code WHERE id = 1');
+
+ // Extract the URL from the query result
+ const url = `https://www.cricketmazza.com/live/${id1Result.rows[0].url}`;
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -53,7 +53,6 @@ async function scrapeAndPush() {
   });
 
   const page = await browser.newPage();
-
   try {
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 0 });
     await page.waitForSelector('li.active', { timeout: 5000 });
@@ -66,14 +65,25 @@ async function scrapeAndPush() {
 
       const getScores = () => {
         const teams = document.querySelectorAll('div.d-flex.justify-content-center.text-white div.p-2');
-        return Array.from(teams)
+        
+        // Extract data and remove empty entries
+        const filteredScores = Array.from(teams)
           .map(team => {
             const teamName = team.querySelector('span.score-name')?.innerText.trim() || '';
             const score = team.querySelector('h3')?.innerText.trim().split(' ')[0] || '';
             return { team: teamName, score };
           })
-          .filter(item => item.team !== '' && item.score !== '');
+          .filter(item => item.team !== '' && item.score !== ''); // Remove empty entries
+      
+        // Reassign indexes to keep continuous order
+        const reorderedScores = filteredScores.map(item=> ({
+          // id: index + 1, // Ensure IDs are sequential starting from 1
+          ...item
+        }));
+      
+        return reorderedScores;
       };
+      
 
       const getBatters = () => {
         const rows = document.querySelectorAll('.live-batsman:nth-of-type(1)  tbody tr');
@@ -83,6 +93,7 @@ async function scrapeAndPush() {
           const playerNameRaw = cols[0].innerText.trim();
           const isStriker = playerNameRaw.includes('*') ? '1' : '0';
           const name = playerNameRaw.replace(/[\.]/g, '').trim();
+
           return {
             name,
             runs: cols[1].innerText.trim(),
@@ -100,6 +111,7 @@ async function scrapeAndPush() {
         return Array.from(rows).map(row => {
           const cols = row.querySelectorAll('td');
           if (cols.length < 6) return null;
+
           return {
             name: cols[0].innerText.trim(),
             overs: cols[1].innerText.trim(),
@@ -114,7 +126,7 @@ async function scrapeAndPush() {
       const getLastOver = () => {
         const overElement = document.querySelector('.live-batsman-ball.ball-run ul');
         return overElement ? overElement.innerText.replace(/\s+/g, ' ').trim() : '';
-      };
+    };
 
       return {
         matchTitle: getText('li.active'),
@@ -136,15 +148,18 @@ async function scrapeAndPush() {
   }
 }
 
-// Schedule the scraper
+// Run scraper every 10 seconds
 scrapeAndPush();
 setInterval(scrapeAndPush, 10000);
 
-// Routes
+// Route: Render EJS Page
 app.get('/', (req, res) => {
-  res.render('match-details');
+  res.render('match-details'); // Renders views/match-details.ejs
 });
 
+// Route: Render EJS Page
+
+// POST - update entry
 app.post('/update/:id', async (req, res) => {
   const { id } = req.params;
   const { url, index, score } = req.body;
@@ -157,6 +172,7 @@ app.post('/update/:id', async (req, res) => {
   }
 });
 
+
 app.get('/dhvanil', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM code ORDER BY id ASC');
@@ -167,22 +183,32 @@ app.get('/dhvanil', async (req, res) => {
   }
 });
 
+
+
 app.get('/api/live-match', async (req, res) => {
   try {
+    // Fetch data from Firebase
     const snapshot = await db.ref('Livematch/nmpl_2025_26_26th_match').once('value');
     const firebaseData = snapshot.val();
 
+    // Fetch data from PostgreSQL
     const result = await pool.query('SELECT index, score FROM code WHERE id = 1');
-    const codeData = result.rows[0];
+    const codeData = result.rows[0]; // Assuming id = 1 exists
 
-    res.json({ firebaseData, codeData });
+    // Combine both Firebase and PostgreSQL data in one response
+    const responseData = {
+      firebaseData,
+      codeData
+    };
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error fetching live match data:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// Start server after DB is connected
+// Connect DB then start server
 pool.connect()
   .then(() => {
     console.log('✅ Connected to PostgreSQL');
